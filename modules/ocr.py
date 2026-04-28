@@ -17,11 +17,20 @@ def _flatten_points(points: Any) -> list[tuple[int, int]]:
             left = int(points["left"])
             top = int(points["top"])
             return [(left, top), (left + int(points["width"]), top + int(points["height"]))]
-    if isinstance(points, (list, tuple)):
-        pairs: list[tuple[int, int]] = []
-        for item in points:
-            if isinstance(item, (list, tuple)) and len(item) >= 2:
-                pairs.append((int(float(item[0])), int(float(item[1]))))
+    try:
+        iterator = iter(points)
+    except TypeError:
+        return []
+
+    pairs: list[tuple[int, int]] = []
+    for item in iterator:
+        try:
+            pair = list(item)
+            if len(pair) >= 2:
+                pairs.append((int(float(pair[0])), int(float(pair[1]))))
+        except (TypeError, ValueError):
+            continue
+    if pairs:
         return pairs
     return []
 
@@ -30,6 +39,14 @@ def _first_present(item: dict[str, Any], keys: tuple[str, ...], default: Any = N
     for key in keys:
         if key in item and item[key] is not None:
             return item[key]
+    return default
+
+
+def _first_attr_present(item: Any, keys: tuple[str, ...], default: Any = None) -> Any:
+    for key in keys:
+        value = getattr(item, key, None)
+        if value is not None:
+            return value
     return default
 
 
@@ -78,11 +95,11 @@ def _iter_from_result(result: Any) -> Iterable[tuple[Any, str, float]]:
         except Exception:
             pass
 
-    boxes = getattr(result, "boxes", None) or getattr(result, "dt_polys", None)
-    texts = getattr(result, "txts", None) or getattr(result, "texts", None) or getattr(result, "rec_texts", None)
-    scores = getattr(result, "scores", None) or getattr(result, "rec_scores", None)
+    boxes = _first_attr_present(result, ("boxes", "dt_polys"))
+    texts = _first_attr_present(result, ("txts", "texts", "rec_texts"))
+    scores = _first_attr_present(result, ("scores", "rec_scores"))
     if boxes is not None and texts is not None:
-        return zip(boxes, texts, scores or [1.0] * len(texts))
+        return zip(boxes, texts, scores if scores is not None else [1.0] * len(texts))
 
     if isinstance(result, dict):
         items = result.get("data") or result.get("res") or result.get("result") or result.get("ocr_result")
