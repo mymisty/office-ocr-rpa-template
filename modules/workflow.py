@@ -12,7 +12,7 @@ from .matcher import TextQuery, find_text
 from .models import ClickTarget, RuntimeContext
 from .ocr import RapidOCREngine
 from .safety import StopController, StopRequested
-from .screenshot import ScreenshotManager
+from .screenshot import ScreenshotManager, normalize_region
 
 
 class StepFailed(RuntimeError):
@@ -25,6 +25,18 @@ STATUS_FAILED = "\u5931\u8d25"
 STATUS_STOPPED = "\u4e2d\u65ad"
 RESULT_SUCCESS = "\u6210\u529f"
 REMARK_STOPPED = "\u7528\u6237\u4e2d\u65ad"
+
+SUPPORTED_ACTIONS = {
+    "screenshot_ocr",
+    "click_text",
+    "wait_text",
+    "input_text",
+    "click_xy",
+    "hotkey",
+    "scroll",
+    "if_text_exists",
+    "update_status",
+}
 
 
 def render_template(value: Any, item: dict[str, Any] | None) -> Any:
@@ -50,6 +62,82 @@ def render_step(step: dict[str, Any], item: dict[str, Any] | None) -> dict[str, 
     return rendered
 
 
+def validate_template(template: dict[str, Any]) -> None:
+    if not isinstance(template.get("data_source"), dict):
+        raise ValueError("Workflow template must define data_source.")
+    if not template["data_source"].get("file"):
+        raise ValueError("Workflow data_source must define file.")
+    if not isinstance(template.get("steps"), list):
+        raise ValueError("Workflow template must define steps as a list.")
+    _validate_steps(template["steps"], location="steps")
+
+
+def _validate_steps(steps: list[Any], location: str) -> None:
+    for index, step in enumerate(steps, start=1):
+        if not isinstance(step, dict):
+            raise ValueError(f"{location}[{index}] must be a mapping.")
+        _validate_step(step, f"{location}[{index}]")
+
+
+def _validate_step(step: dict[str, Any], location: str) -> None:
+    action = step.get("action")
+    if action not in SUPPORTED_ACTIONS:
+        raise ValueError(f"{location} has unsupported action: {action}")
+    if "region" in step:
+        normalize_region(step["region"])
+    if action in {"click_text", "wait_text", "if_text_exists"} and not str(step.get("text", "")).strip():
+        raise ValueError(f"{location} action {action} requires text.")
+    if action == "input_text" and "text" not in step:
+        raise ValueError(f"{location} action input_text requires text.")
+    if action == "click_xy":
+        _as_int(step, "x", location)
+        _as_int(step, "y", location)
+    if action == "hotkey":
+        keys = step.get("keys")
+        if not isinstance(keys, list) or not keys:
+            raise ValueError(f"{location} action hotkey requires a non-empty keys list.")
+    for key in ("retry", "occurrence", "clicks"):
+        if key in step:
+            value = _as_int(step, key, location)
+            if value is not None and value < 1:
+                raise ValueError(f"{location}.{key} must be greater than 0.")
+    for key in ("retry_interval", "wait_after", "timeout", "move_duration"):
+        if key in step:
+            value = _as_float(step, key, location)
+            if value is not None and value < 0:
+                raise ValueError(f"{location}.{key} must be greater than or equal to 0.")
+    if action == "if_text_exists":
+        for branch in ("then", "else"):
+            if branch in step:
+                if not isinstance(step[branch], list):
+                    raise ValueError(f"{location}.{branch} must be a list.")
+                _validate_steps(step[branch], location=f"{location}.{branch}")
+
+
+def _as_int(step: dict[str, Any], key: str, location: str) -> int | None:
+    try:
+        value = step[key]
+        if _is_template_value(value):
+            return None
+        return int(value)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"{location}.{key} must be an integer.") from exc
+
+
+def _as_float(step: dict[str, Any], key: str, location: str) -> float | None:
+    try:
+        value = step[key]
+        if _is_template_value(value):
+            return None
+        return float(value)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"{location}.{key} must be a number.") from exc
+
+
+def _is_template_value(value: Any) -> bool:
+    return isinstance(value, str) and "{{" in value and "}}" in value
+
+
 class WorkflowRunner:
     def __init__(
         self,
@@ -72,7 +160,7 @@ class WorkflowRunner:
 
     def screenshot_ocr(self, label: str, subdir: str = "before", region: Any = None) -> list:
         image_path = self.screenshot.capture(label=label, subdir=subdir, region=region)
-        boxes = self.ocr_engine.recognize(image_path)
+        boxes = self.ocr_engine.recognize(image_path, screen_offset=self.screenshot.screen_offset_for(image_path))
         self.context.last_screenshot = image_path
         self.context.last_ocr = boxes
         self.logger.ocr(image_path, boxes)
@@ -112,7 +200,7 @@ class WorkflowRunner:
                     move_duration=float(step.get("move_duration", self.config.get("click", {}).get("move_duration", 0.15))),
                     dry_run=self.context.dry_run,
                 )
-                target = ClickTarget(box.center_x, box.center_y, box=box, description=f"text={step['text']}")
+                target = ClickTarget(box.screen_center_x, box.screen_center_y, box=box, description=f"text={step['text']}")
                 clicked = self.clicker.click(target, options)
                 wait_after = float(step.get("wait_after", 0))
                 if wait_after:
@@ -174,6 +262,7 @@ class WorkflowRunner:
         only_statuses: set[str] | None = None,
         result_path: str | Path | None = None,
     ) -> Path:
+        validate_template(template)
         table = load_task_table(template["data_source"])
         skip_statuses = set(self.config.get("workflow", {}).get("skip_statuses", []))
         result_path = Path(result_path or Path(self.config.get("paths", {}).get("logs", "logs")) / self.context.run_id / "result.xlsx")

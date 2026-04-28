@@ -33,3 +33,12 @@ def test_fuzzy_match():
     found = find_text(boxes(), TextQuery(text="\u5ba1\u67e5\u901a\u8fc7", match="fuzzy", fuzzy_threshold=60))
     assert found is not None
     assert found.text == "\u5ba1\u6838\u901a\u8fc7"
+
+
+def test_region_match_uses_screen_coordinates():
+    cropped_box = OCRBox("\u786e\u8ba4", 10, 10, 50, 30, 0.98, screen_offset_x=100, screen_offset_y=200)
+    found = find_text(
+        [cropped_box],
+        TextQuery(text="\u786e\u8ba4", region={"left": 100, "top": 200, "width": 80, "height": 80}),
+    )
+    assert found is cropped_box

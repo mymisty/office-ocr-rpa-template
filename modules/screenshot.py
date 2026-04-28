@@ -22,36 +22,50 @@ def normalize_region(region: dict[str, Any] | list[int] | tuple[int, ...] | None
         return None
     if isinstance(region, dict):
         if {"left", "top", "width", "height"} <= set(region):
-            return {
+            normalized = {
                 "left": int(region["left"]),
                 "top": int(region["top"]),
                 "width": int(region["width"]),
                 "height": int(region["height"]),
             }
+            _validate_region_size(normalized)
+            return normalized
         if {"x", "y", "width", "height"} <= set(region):
-            return {
+            normalized = {
                 "left": int(region["x"]),
                 "top": int(region["y"]),
                 "width": int(region["width"]),
                 "height": int(region["height"]),
             }
+            _validate_region_size(normalized)
+            return normalized
         if {"x1", "y1", "x2", "y2"} <= set(region):
-            return {
+            normalized = {
                 "left": int(region["x1"]),
                 "top": int(region["y1"]),
                 "width": int(region["x2"]) - int(region["x1"]),
                 "height": int(region["y2"]) - int(region["y1"]),
             }
+            _validate_region_size(normalized)
+            return normalized
     if len(region) == 4:
         x1, y1, x2, y2 = [int(v) for v in region]
-        return {"left": x1, "top": y1, "width": x2 - x1, "height": y2 - y1}
+        normalized = {"left": x1, "top": y1, "width": x2 - x1, "height": y2 - y1}
+        _validate_region_size(normalized)
+        return normalized
     raise ValueError(f"Unsupported screenshot region: {region}")
+
+
+def _validate_region_size(region: dict[str, int]) -> None:
+    if region["width"] <= 0 or region["height"] <= 0:
+        raise ValueError(f"Screenshot region must have positive width and height: {region}")
 
 
 class ScreenshotManager:
     def __init__(self, root_dir: str | Path, run_id: str) -> None:
         self.root_dir = Path(root_dir)
         self.run_id = run_id
+        self._capture_offsets: dict[str, tuple[int, int]] = {}
         set_dpi_awareness()
 
     def capture(
@@ -73,7 +87,11 @@ class ScreenshotManager:
             shot = sct.grab(monitor)
             image = Image.frombytes("RGB", shot.size, shot.rgb)
             image.save(path)
+            self._capture_offsets[str(path)] = (int(monitor.get("left", 0)), int(monitor.get("top", 0)))
         return path
+
+    def screen_offset_for(self, image_path: str | Path) -> tuple[int, int]:
+        return self._capture_offsets.get(str(Path(image_path)), (0, 0))
 
     def annotate(self, image_path: str | Path, boxes: list[OCRBox], output_path: str | Path | None = None) -> Path:
         from PIL import Image, ImageDraw

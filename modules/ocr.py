@@ -26,7 +26,20 @@ def _flatten_points(points: Any) -> list[tuple[int, int]]:
     return []
 
 
-def _box_from_points(text: str, points: Any, confidence: float, source_image: str) -> OCRBox | None:
+def _first_present(item: dict[str, Any], keys: tuple[str, ...], default: Any = None) -> Any:
+    for key in keys:
+        if key in item and item[key] is not None:
+            return item[key]
+    return default
+
+
+def _box_from_points(
+    text: str,
+    points: Any,
+    confidence: float,
+    source_image: str,
+    screen_offset: tuple[int, int] = (0, 0),
+) -> OCRBox | None:
     pairs = _flatten_points(points)
     if not pairs:
         return None
@@ -40,6 +53,8 @@ def _box_from_points(text: str, points: Any, confidence: float, source_image: st
         y2=max(ys),
         confidence=float(confidence),
         source_image=source_image,
+        screen_offset_x=int(screen_offset[0]),
+        screen_offset_y=int(screen_offset[1]),
     )
 
 
@@ -54,9 +69,9 @@ def _iter_from_result(result: Any) -> Iterable[tuple[Any, str, float]]:
             items = payload.get("data") or payload.get("res") or payload.get("result") or []
             parsed = []
             for item in items:
-                text = item.get("text") or item.get("rec_text") or item.get("txt") or ""
-                score = item.get("confidence") or item.get("score") or item.get("rec_score") or 1.0
-                points = item.get("box") or item.get("points") or item.get("dt_polys")
+                text = _first_present(item, ("text", "rec_text", "txt"), "")
+                score = _first_present(item, ("confidence", "score", "rec_score"), 1.0)
+                points = _first_present(item, ("box", "points", "dt_polys"))
                 parsed.append((points, text, score))
             if parsed:
                 return parsed
@@ -74,9 +89,9 @@ def _iter_from_result(result: Any) -> Iterable[tuple[Any, str, float]]:
         if items is not None:
             parsed = []
             for item in items:
-                text = item.get("text") or item.get("rec_text") or item.get("txt") or ""
-                score = item.get("confidence") or item.get("score") or item.get("rec_score") or 1.0
-                points = item.get("box") or item.get("points") or item.get("dt_polys")
+                text = _first_present(item, ("text", "rec_text", "txt"), "")
+                score = _first_present(item, ("confidence", "score", "rec_score"), 1.0)
+                points = _first_present(item, ("box", "points", "dt_polys"))
                 parsed.append((points, text, score))
             return parsed
 
@@ -84,9 +99,9 @@ def _iter_from_result(result: Any) -> Iterable[tuple[Any, str, float]]:
         parsed = []
         for item in result:
             if isinstance(item, dict):
-                text = item.get("text") or item.get("rec_text") or item.get("txt") or ""
-                score = item.get("confidence") or item.get("score") or item.get("rec_score") or 1.0
-                points = item.get("box") or item.get("points") or item.get("dt_polys")
+                text = _first_present(item, ("text", "rec_text", "txt"), "")
+                score = _first_present(item, ("confidence", "score", "rec_score"), 1.0)
+                points = _first_present(item, ("box", "points", "dt_polys"))
                 parsed.append((points, text, score))
             elif isinstance(item, (list, tuple)) and len(item) >= 3:
                 parsed.append((item[0], item[1], item[2]))
@@ -111,14 +126,14 @@ class RapidOCREngine:
             self._engine = RapidOCR()
         return self._engine
 
-    def recognize(self, image_path: str | Path) -> list[OCRBox]:
+    def recognize(self, image_path: str | Path, screen_offset: tuple[int, int] = (0, 0)) -> list[OCRBox]:
         image_path = Path(image_path)
         result = self._load()(str(image_path))
         boxes: list[OCRBox] = []
         for points, text, score in _iter_from_result(result):
             if not str(text).strip():
                 continue
-            box = _box_from_points(str(text), points, float(score), str(image_path))
+            box = _box_from_points(str(text), points, float(score), str(image_path), screen_offset=screen_offset)
             if box and box.confidence >= self.min_confidence:
                 boxes.append(box)
         return boxes

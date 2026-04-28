@@ -33,6 +33,14 @@ def make_run_id(prefix: str = "run") -> str:
     return f"{prefix}_{datetime.now():%Y%m%d_%H%M%S}"
 
 
+def resolve_dry_run(args: argparse.Namespace, config: dict[str, Any]) -> bool:
+    if getattr(args, "live", False):
+        return False
+    if getattr(args, "dry_run", False):
+        return True
+    return bool(config.get("app", {}).get("default_dry_run", True))
+
+
 def countdown(seconds: int, stop: StopController) -> None:
     if seconds <= 0:
         return
@@ -61,14 +69,14 @@ def build_runtime(config: dict[str, Any], run_id: str, dry_run: bool) -> tuple:
 
 def command_click(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    dry_run = bool(args.dry_run or config.get("app", {}).get("default_dry_run", False))
+    dry_run = resolve_dry_run(args, config)
     run_id = args.run_id or make_run_id("click")
     context, stop, screenshot, logger, ocr, clicker = build_runtime(config, run_id, dry_run)
     try:
         if not dry_run:
             countdown(int(config.get("app", {}).get("startup_countdown_seconds", 3)), stop)
         image_path = screenshot.capture(label="click_before", subdir="before", region=args.region)
-        boxes = ocr.recognize(image_path)
+        boxes = ocr.recognize(image_path, screen_offset=screenshot.screen_offset_for(image_path))
         logger.ocr(image_path, boxes)
         query = TextQuery(
             text=args.text,
@@ -86,7 +94,7 @@ def command_click(args: argparse.Namespace) -> int:
             return 2
 
         marked = screenshot.annotate(image_path, [box])
-        target = ClickTarget(box.center_x, box.center_y, box=box, description=f"text={args.text}")
+        target = ClickTarget(box.screen_center_x, box.screen_center_y, box=box, description=f"text={args.text}")
         clicked = clicker.click(
             target,
             ClickOptions(
@@ -121,7 +129,7 @@ def command_click(args: argparse.Namespace) -> int:
 def command_run(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     template = load_yaml(args.template)
-    dry_run = bool(args.dry_run or config.get("app", {}).get("default_dry_run", False))
+    dry_run = resolve_dry_run(args, config)
     run_id = args.run_id or make_run_id("run")
     context, stop, screenshot, logger, ocr, clicker = build_runtime(config, run_id, dry_run)
     runner = WorkflowRunner(config, ocr, screenshot, clicker, logger, stop, context)
@@ -151,7 +159,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     click_parser = subparsers.add_parser("click", help="Find text on screen and click it")
     click_parser.add_argument("text", help="Target text to find")
-    click_parser.add_argument("--dry-run", action="store_true", help="Recognize and mark target without clicking")
+    click_safety = click_parser.add_mutually_exclusive_group()
+    click_safety.add_argument("--dry-run", action="store_true", help="Recognize and mark target without clicking")
+    click_safety.add_argument("--live", action="store_true", help="Allow real mouse/keyboard actions")
     click_parser.add_argument("--match", choices=["exact", "contains", "fuzzy"], default="contains")
     click_parser.add_argument("--fuzzy-threshold", type=int, default=80)
     click_parser.add_argument("--min-confidence", type=float, default=None)
@@ -166,7 +176,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_parser = subparsers.add_parser("run", help="Run a YAML workflow")
     run_parser.add_argument("template", help="Workflow YAML path")
-    run_parser.add_argument("--dry-run", action="store_true", help="Run recognition and logs without clicking/typing")
+    run_safety = run_parser.add_mutually_exclusive_group()
+    run_safety.add_argument("--dry-run", action="store_true", help="Run recognition and logs without clicking/typing")
+    run_safety.add_argument("--live", action="store_true", help="Allow real mouse/keyboard actions")
     run_parser.add_argument(
         "--only",
         default=None,

@@ -38,22 +38,29 @@ RapidOCR may download model files on first use.
 
 ## Quick Start
 
-Dry run: capture the screen, run OCR, mark the target, but do not click.
+By default, commands run in dry-run mode: capture the screen, run OCR, mark the
+target, but do not click.
 
 ```powershell
-python main.py click "Submit" --dry-run
+python main.py click "Submit"
 ```
 
 Real click:
 
 ```powershell
-python main.py click "Submit"
+python main.py click "Submit" --live
 ```
 
 Run the sample data-driven workflow:
 
 ```powershell
 python main.py run tasks/batch_names.yaml
+```
+
+Run it with real mouse and keyboard actions:
+
+```powershell
+python main.py run tasks/batch_names.yaml --live
 ```
 
 Run only rows with specific statuses:
@@ -124,8 +131,8 @@ screenshots/<run_id>/error/
 
 ## Safety
 
-- Default mode performs real clicks.
-- Use `--dry-run` for rehearsal.
+- Default mode is dry-run.
+- Use `--live` for real mouse and keyboard actions.
 - A startup countdown runs before real clicking.
 - `Esc` attempts to stop the workflow.
 - `pyautogui.FAILSAFE` is enabled by default: move the mouse to the upper-left

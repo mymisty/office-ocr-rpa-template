@@ -1,6 +1,6 @@
 app:
   startup_countdown_seconds: 3
-  default_dry_run: false
+  default_dry_run: true
   fail_safe_corner: true
   stop_hotkey: esc
 

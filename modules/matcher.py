@@ -16,17 +16,30 @@ class TextQuery:
     fuzzy_threshold: int = 80
     occurrence: int = 1
     position: str = "reading"
-    region: dict[str, int] | None = None
+    region: Any = None
 
 
-def _in_region(box: OCRBox, region: dict[str, int] | None) -> bool:
+def _region_bounds(region: Any) -> tuple[int, int, int, int] | None:
     if not region:
+        return None
+    if isinstance(region, (list, tuple)) and len(region) == 4:
+        x1, y1, x2, y2 = [int(v) for v in region]
+        return x1, y1, x2, y2
+    if isinstance(region, dict):
+        x1 = int(region.get("x1", region.get("left", region.get("x", 0))))
+        y1 = int(region.get("y1", region.get("top", region.get("y", 0))))
+        x2 = int(region.get("x2", x1 + int(region.get("width", 0))))
+        y2 = int(region.get("y2", y1 + int(region.get("height", 0))))
+        return x1, y1, x2, y2
+    raise ValueError(f"Unsupported match region: {region}")
+
+
+def _in_region(box: OCRBox, region: Any) -> bool:
+    bounds = _region_bounds(region)
+    if bounds is None:
         return True
-    x1 = int(region.get("x1", region.get("left", 0)))
-    y1 = int(region.get("y1", region.get("top", 0)))
-    x2 = int(region.get("x2", x1 + int(region.get("width", 0))))
-    y2 = int(region.get("y2", y1 + int(region.get("height", 0))))
-    return box.center_x >= x1 and box.center_x <= x2 and box.center_y >= y1 and box.center_y <= y2
+    x1, y1, x2, y2 = bounds
+    return x1 <= box.screen_center_x <= x2 and y1 <= box.screen_center_y <= y2
 
 
 def _matches(box_text: str, query: TextQuery) -> bool:
@@ -45,14 +58,14 @@ def _matches(box_text: str, query: TextQuery) -> bool:
 
 def _sort_boxes(boxes: list[OCRBox], position: str) -> list[OCRBox]:
     if position == "top":
-        return sorted(boxes, key=lambda b: (b.y1, b.x1))
+        return sorted(boxes, key=lambda b: (b.screen_y1, b.screen_x1))
     if position == "bottom":
-        return sorted(boxes, key=lambda b: (-b.y2, b.x1))
+        return sorted(boxes, key=lambda b: (-b.screen_y2, b.screen_x1))
     if position == "left":
-        return sorted(boxes, key=lambda b: (b.x1, b.y1))
+        return sorted(boxes, key=lambda b: (b.screen_x1, b.screen_y1))
     if position == "right":
-        return sorted(boxes, key=lambda b: (-b.x2, b.y1))
-    return sorted(boxes, key=lambda b: (b.y1, b.x1))
+        return sorted(boxes, key=lambda b: (-b.screen_x2, b.screen_y1))
+    return sorted(boxes, key=lambda b: (b.screen_y1, b.screen_x1))
 
 
 def find_text(boxes: list[OCRBox], query: TextQuery | dict[str, Any] | str) -> OCRBox | None:
