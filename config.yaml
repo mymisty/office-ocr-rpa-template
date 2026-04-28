@@ -1,0 +1,33 @@
+app:
+  startup_countdown_seconds: 3
+  default_dry_run: false
+  fail_safe_corner: true
+  stop_hotkey: esc
+
+ocr:
+  engine: rapidocr
+  min_confidence: 0.45
+
+screenshot:
+  mode: fullscreen
+  region: null
+  save_before: true
+  save_after: true
+
+click:
+  move_duration: 0.15
+  highlight_before_click: false
+  highlight_seconds: 0.7
+  retry: 3
+  retry_interval: 1
+
+workflow:
+  poll_interval: 0.5
+  continue_on_item_error: true
+  skip_statuses:
+    - "\u5df2\u5b8c\u6210"
+
+paths:
+  screenshots: screenshots
+  logs: logs
+  data: data

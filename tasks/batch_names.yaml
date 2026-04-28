@@ -1,0 +1,49 @@
+task_name: batch_process_name_list
+
+data_source:
+  file: data/names.csv
+  sheet: Sheet1
+  key_column: name
+  status_column: status
+  remark_column: remark
+
+loop:
+  for_each: name
+
+steps:
+  - name: screenshot and OCR current list page
+    action: screenshot_ocr
+
+  - name: click current name
+    action: click_text
+    text: "{{name}}"
+    retry: 3
+    wait_after: 1
+
+  - name: wait for detail page
+    action: wait_text
+    text: "\u8be6\u60c5"
+    timeout: 5
+
+  - name: click approve
+    action: click_text
+    text: "\u5ba1\u6838\u901a\u8fc7"
+    retry: 3
+    wait_after: 1
+
+  - name: click confirm
+    action: click_text
+    text: "\u786e\u8ba4"
+    retry: 3
+    wait_after: 1
+
+  - name: return to list
+    action: click_text
+    text: "\u8fd4\u56de"
+    retry: 3
+    wait_after: 1
+
+  - name: mark current item done
+    action: update_status
+    status: "\u5df2\u5b8c\u6210"
+    remark: "\u6210\u529f"
