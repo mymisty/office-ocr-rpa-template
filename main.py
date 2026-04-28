@@ -150,6 +150,13 @@ def command_run(args: argparse.Namespace) -> int:
         stop.close()
 
 
+def command_ui(args: argparse.Namespace) -> int:
+    from modules.ui import launch_app
+
+    launch_app(default_config=args.config)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Office OCR RPA template runner")
     parser.add_argument("--config", default="config.yaml", help="Global config YAML path")
@@ -186,6 +193,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument("--result", default=None, help="Result XLSX path")
     run_parser.set_defaults(func=command_run)
+
+    ui_parser = subparsers.add_parser("ui", help="Open the desktop UI")
+    ui_parser.set_defaults(func=command_ui)
 
     return parser
 

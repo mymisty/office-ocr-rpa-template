@@ -25,13 +25,21 @@ Related projects reviewed before implementation:
 
 ## Setup
 
-Install Python 3.10 or newer. Python 3.11/3.12 is recommended.
+Install Python 3.10 or newer. Python 3.12 is recommended and pinned in
+`.python-version` for uv users.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 pip install -r requirements.txt
+```
+
+With uv:
+
+```powershell
+uv python install 3.12
+uv run --with pytest python -m pytest -q
 ```
 
 RapidOCR may download model files on first use.
@@ -67,6 +75,12 @@ Run only rows with specific statuses:
 
 ```powershell
 python main.py run tasks/batch_names.yaml --only "failed,pending"
+```
+
+Open the desktop UI:
+
+```powershell
+python main.py ui
 ```
 
 For Chinese UI text, pass the real text directly from your terminal or put it in
